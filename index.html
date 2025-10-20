@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contact Management App</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Custom Styles -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            scroll-behavior: smooth;
+        }
+        /* Custom styles for toast notifications */
+        .toast {
+            visibility: hidden;
+            min-width: 250px;
+            margin-left: -125px;
+            color: #fff;
+            text-align: center;
+            border-radius: 8px;
+            padding: 16px;
+            position: fixed;
+            z-index: 100;
+            left: 50%;
+            bottom: 30px;
+            font-size: 17px;
+            opacity: 0;
+            transition: visibility 0s 0.5s, opacity 0.5s linear;
+        }
+        .toast.show {
+            visibility: visible;
+            opacity: 1;
+            transition: opacity 0.5s linear;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+
+    <div class="container mx-auto p-4 md:p-8 max-w-4xl">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-slate-900">Contact Manager</h1>
+            <p class="text-slate-600 mt-2">A simple way to manage your contacts.</p>
+        </header>
+
+        <main class="grid md:grid-cols-3 gap-8">
+            <!-- Form Section -->
+            <section class="md:col-span-1 bg-white p-6 rounded-lg shadow-md h-fit">
+                <h2 id="form-title" class="text-2xl font-semibold mb-4">Add New Contact</h2>
+                <form id="contact-form" class="space-y-4">
+                    <input type="hidden" id="contact-id">
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-slate-700">Name</label>
+                        <input type="text" id="name" name="name" required class="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-slate-700">Email</label>
+                        <input type="email" id="email" name="email" required class="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label for="phone" class="block text-sm font-medium text-slate-700">Phone</label>
+                        <input type="tel" id="phone" name="phone" required class="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button type="submit" id="submit-button" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors">Add Contact</button>
+                        <button type="button" id="cancel-button" class="w-full hidden justify-center py-2 px-4 border border-slate-300 rounded-md shadow-sm text-sm font-medium text-slate-700 bg-white hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 transition-colors">Cancel</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Contacts List Section -->
+            <section class="md:col-span-2">
+                 <!-- Search Bar -->
+                <div class="mb-4">
+                    <label for="search-input" class="sr-only">Search Contacts</label>
+                    <input type="search" id="search-input" placeholder="Search by name, email, or phone..." class="block w-full px-4 py-3 bg-white border border-slate-300 rounded-md text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                </div>
+
+                <h2 class="text-2xl font-semibold mb-4">Contact List</h2>
+                <div id="contacts-list" class="space-y-4">
+                    <!-- Contacts will be dynamically inserted here -->
+                     <p id="loading-message" class="text-center text-slate-500 p-4">Loading contacts...</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- CONFIG & DOM ELEMENTS ---
+            const API_URL = '/api/contacts';
+            const form = document.getElementById('contact-form');
+            const formTitle = document.getElementById('form-title');
+            const contactIdInput = document.getElementById('contact-id');
+            const nameInput = document.getElementById('name');
+            const emailInput = document.getElementById('email');
+            const phoneInput = document.getElementById('phone');
+            const submitButton = document.getElementById('submit-button');
+            const cancelButton = document.getElementById('cancel-button');
+            const contactsList = document.getElementById('contacts-list');
+            const loadingMessage = document.getElementById('loading-message');
+            const searchInput = document.getElementById('search-input');
+            const toast = document.getElementById('toast');
+            
+            let contactsData = []; // Cache for contact data
+
+            const debounce = (func, delay) => {
+                let timeout;
+                return (...args) => {
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => func.apply(this, args), delay);
+                };
+            };
+
+            const showToast = (message, isError = false) => {
+                toast.textContent = message;
+                toast.className = `toast show ${isError ? 'bg-red-500' : 'bg-green-500'}`;
+                setTimeout(() => {
+                    toast.className = toast.className.replace('show', '');
+                }, 3000);
+            };
+
+            const resetForm = () => {
+                form.reset();
+                contactIdInput.value = '';
+                formTitle.textContent = 'Add New Contact';
+                submitButton.textContent = 'Add Contact';
+                cancelButton.classList.add('hidden');
+            };
+
+            const fetchAndRenderContacts = async (searchTerm = '') => {
+                loadingMessage.style.display = 'block';
+                contactsList.innerHTML = ''; 
+                const url = searchTerm ? `${API_URL}?search=${encodeURIComponent(searchTerm)}` : API_URL;
+
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error('Failed to fetch contacts.');
+                    contactsData = await response.json();
+
+                    loadingMessage.style.display = 'none';
+
+                    if (contactsData.length === 0) {
+                        const message = searchTerm ? `No contacts found for "${searchTerm}".` : 'No contacts found. Add one using the form!';
+                        contactsList.innerHTML = `<p class="text-center text-slate-500 p-4 bg-white rounded-lg shadow-md">${message}</p>`;
+                        return;
+                    }
+
+                    contactsData.forEach(contact => {
+                        const contactEl = document.createElement('div');
+                        contactEl.className = 'bg-white p-4 rounded-lg shadow-md flex items-center';
+                        contactEl.dataset.id = contact._id;
+
+                        contactEl.innerHTML = `
+                            <div class="flex-grow">
+                                <h3 class="font-semibold text-lg text-slate-900">${contact.name}</h3>
+                                <p class="text-slate-600 text-sm">${contact.email}</p>
+                                <p class="text-slate-600 text-sm">${contact.phone}</p>
+                            </div>
+                            <div class="flex flex-shrink-0 space-x-2">
+                                <button class="edit-btn p-2 text-slate-500 hover:text-indigo-600 transition-colors" title="Edit Contact">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" /></svg>
+                                </button>
+                                <button class="delete-btn p-2 text-slate-500 hover:text-red-600 transition-colors" title="Delete Contact">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" /></svg>
+                                </button>
+                            </div>
+                        `;
+                        contactsList.appendChild(contactEl);
+                    });
+                } catch (error) {
+                    loadingMessage.style.display = 'none';
+                    showToast(error.message, true);
+                }
+            };
+            
+            // --- EVENT LISTENERS ---
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const id = contactIdInput.value;
+                const contactData = {
+                    name: nameInput.value,
+                    email: emailInput.value,
+                    phone: phoneInput.value,
+                };
+
+                const method = id ? 'PUT' : 'POST';
+                const url = id ? `${API_URL}/${id}` : API_URL;
+
+                try {
+                    const response = await fetch(url, {
+                        method: method,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(contactData)
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.message || `Failed to ${id ? 'update' : 'create'} contact.`);
+                    }
+
+                    showToast(`Contact ${id ? 'updated' : 'added'} successfully!`);
+                    resetForm();
+                    fetchAndRenderContacts(searchInput.value);
+                } catch (error) {
+                    showToast(error.message, true);
+                }
+            });
+
+            contactsList.addEventListener('click', async (e) => {
+                const editButton = e.target.closest('.edit-btn');
+                const deleteButton = e.target.closest('.delete-btn');
+
+                if (editButton) {
+                    const contactEl = editButton.closest('[data-id]');
+                    const id = contactEl.dataset.id;
+                    const contactToEdit = contactsData.find(c => c._id === id);
+
+                    if (!contactToEdit) return;
+                    
+                    contactIdInput.value = contactToEdit._id;
+                    nameInput.value = contactToEdit.name;
+                    emailInput.value = contactToEdit.email;
+                    phoneInput.value = contactToEdit.phone;
+
+                    formTitle.textContent = 'Edit Contact';
+                    submitButton.textContent = 'Update Contact';
+                    cancelButton.classList.remove('hidden');
+                    form.scrollIntoView();
+                }
+
+                if (deleteButton) {
+                    const contactEl = deleteButton.closest('[data-id]');
+                    const id = contactEl.dataset.id;
+                    
+                    try {
+                        const response = await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
+                        if (!response.ok) throw new Error('Failed to delete contact.');
+                        
+                        showToast('Contact deleted successfully!');
+                        fetchAndRenderContacts(searchInput.value); // Refresh list
+                    } catch (error) {
+                        showToast(error.message, true);
+                    }
+                }
+            });
+
+            cancelButton.addEventListener('click', resetForm);
+
+            const debouncedSearch = debounce((e) => fetchAndRenderContacts(e.target.value), 300);
+            searchInput.addEventListener('input', debouncedSearch);
+
+            // --- INITIAL LOAD ---
+            fetchAndRenderContacts();
+        });
+    </script>
+</body>
+</html>
+
