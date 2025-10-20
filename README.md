@@ -1,0 +1,1 @@
+A simple contact management webpage with CRUD functionalities made with simple css,html,javascript and mongodb as database.It contain various constraints such as proper email id,10 digit numbers,phone numbers should be unique etc
